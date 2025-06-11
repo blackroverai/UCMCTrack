@@ -113,7 +113,9 @@ def run(args):
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     writer = cv2.VideoWriter(
-        args.out, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+        args.out, cv2.VideoWriter_fourcc(*"avc1"), fps, (width, height))
+
+    writer.set(cv2.VIDEOWRITER_PROP_BITRATE, 2_000_000)
 
     # --------------------------------------------------
     # init detector + tracker
