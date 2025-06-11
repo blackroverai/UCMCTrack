@@ -54,54 +54,52 @@ class Detector:
         idx = frame_id - 1
         if idx < 0 or idx >= len(self.raw):
             return []
-
+    
         entry = self.raw[idx]
         dets, det_id = [], 0
-
-        # ——— Branch A: full JSON dict from res.to_json() ———
+    
+        # Branch A: full YOLO .to_json() style
         if isinstance(entry, dict) and "boxes" in entry:
-            boxes   = entry["boxes"]
-            scores  = entry["scores"]
-            classes = entry["classes"]
-            for b, conf, cls in zip(boxes, scores, classes):
-                if conf < conf_thresh:
-                    continue
-                x1, y1, x2, y2 = map(float, b)
-                w, h = x2-x1, y2-y1
-                if w<=0 or h<=0:
-                    continue
-                det = Detection(det_id, x1, y1, w, h, conf, int(cls))
-                det.y, det.R = self.mapper.mapto(
-                    [det.bb_left, det.bb_top, det.bb_width, det.bb_height])
-                dets.append(det); det_id += 1
-
-        # ——— Branch B: list of per-item dicts {"box":…, "confidence":…} ———
+            # … as before …
+    
+        # Branch B: list of per-item dicts or JSON strings
         elif isinstance(entry, list):
-            for dd in entry:
-                if not isinstance(dd, dict):
+            for item in entry:
+                if isinstance(item, str):
+                    try:
+                        dd = json.loads(item)
+                    except:
+                        continue
+                elif isinstance(item, dict):
+                    dd = item
+                else:
                     continue
+    
                 conf = float(dd.get("confidence", 0))
                 if conf < conf_thresh:
                     continue
                 b = dd.get("box", {})
                 if not all(k in b for k in ("x1","y1","x2","y2")):
                     continue
+    
                 x1, y1 = float(b["x1"]), float(b["y1"])
                 x2, y2 = float(b["x2"]), float(b["y2"])
                 w, h = x2-x1, y2-y1
                 if w<=0 or h<=0:
                     continue
+    
                 det = Detection(det_id, x1, y1, w, h,
                                 conf, int(dd.get("class", 0)))
                 det.y, det.R = self.mapper.mapto(
                     [det.bb_left, det.bb_top, det.bb_width, det.bb_height])
-                dets.append(det); det_id += 1
-
+                dets.append(det)
+                det_id += 1
+    
         else:
-            # unexpected format: skip
             return []
-
+    
         return dets
+
 
 
 
