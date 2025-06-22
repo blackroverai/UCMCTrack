@@ -13,6 +13,65 @@ from tracker.ucmc import UCMCTrack
 from detector.mapper import Mapper
 
 
+def merge_frame_results(res_list, iou_thresh=0.5):
+    template = res_list[0]
+    all_boxes = torch.cat([r.boxes.data for r in res_list], dim=0)
+    if all_boxes.numel() == 0:
+        return template.new()
+    keep = nms(all_boxes[:, :4], all_boxes[:, 4], iou_thresh)
+    merged_boxes = all_boxes[keep]
+    new = template.new()
+    new.update(boxes=merged_boxes)
+    return new
+
+def fuse_union(res, iou_thr=0.5, ioa_thr=0.7):
+    if res.boxes is None or res.boxes.data.numel() == 0:
+        return res.new()
+    data = res.boxes.data
+    coords = data[:, :4]
+    scores = data[:, 4]
+    labels = data[:, 5].long()
+    N = len(scores)
+    iou_mat = box_iou(coords, coords)
+    x1 = torch.max(coords[:, 0].view(-1, 1), coords[:, 0])
+    y1 = torch.max(coords[:, 1].view(-1, 1), coords[:, 1])
+    x2 = torch.min(coords[:, 2].view(-1, 1), coords[:, 2])
+    y2 = torch.min(coords[:, 3].view(-1, 1), coords[:, 3])
+    inter_area = ((x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0))
+    area = (coords[:, 2] - coords[:, 0]) * (coords[:, 3] - coords[:, 1])
+    ioa_mat = inter_area / (torch.min(area.view(-1,1), area.view(1,-1)) + 1e-6)
+    conn = (iou_mat > iou_thr) | (ioa_mat > ioa_thr)
+    visited = torch.zeros(N, dtype=torch.bool, device=data.device)
+    groups = []
+    for i in range(N):
+        if visited[i]:
+            continue
+        stack, comp = [i], []
+        while stack:
+            u = stack.pop()
+            if visited[u]:
+                continue
+            visited[u] = True
+            comp.append(u)
+            stack.extend(torch.where(conn[u])[0].tolist())
+        groups.append(comp)
+    fused = []
+    for comp in groups:
+        idx = torch.tensor(comp, device=data.device)
+        x1_min, y1_min = coords[idx, :2].min(0)[0]
+        x2_max, y2_max = coords[idx, 2:4].max(0)[0]
+        scs = scores[idx]
+        best = scs.argmax()
+        fused.append(torch.tensor([
+            x1_min, y1_min, x2_max, y2_max,
+            scs[best], labels[idx][best].float()
+        ], device=data.device))
+    fused_data = torch.stack(fused, 0)
+    out = res.new()
+    out.update(boxes=fused_data)
+    return out
+
+
 class Detection:
     def __init__(self, det_id, bb_left=0, bb_top=0, bb_width=0, bb_height=0,
                  conf=0.0, det_class=0):
@@ -44,69 +103,11 @@ class LiveDetector:
         self.yolo12 = YOLO("yolo12x.pt")
         self.detr = RTDETR("rtdetr-x.pt")
 
-    def merge_frame_results(self, res_list, iou_thresh=0.5):
-        template = res_list[0]
-        all_boxes = torch.cat([r.boxes.data for r in res_list], dim=0)
-        if all_boxes.numel() == 0:
-            return template.new()
-        keep = nms(all_boxes[:, :4], all_boxes[:, 4], iou_thresh)
-        merged_boxes = all_boxes[keep]
-        new = template.new()
-        new.update(boxes=merged_boxes)
-        return new
-
-    def fuse_union(self, res, iou_thr=0.5, ioa_thr=0.7):
-        if res.boxes is None or res.boxes.data.numel() == 0:
-            return res.new()
-        data = res.boxes.data
-        coords = data[:, :4]
-        scores = data[:, 4]
-        labels = data[:, 5].long()
-        N = len(scores)
-        iou_mat = box_iou(coords, coords)
-        x1 = torch.max(coords[:, 0].view(-1, 1), coords[:, 0])
-        y1 = torch.max(coords[:, 1].view(-1, 1), coords[:, 1])
-        x2 = torch.min(coords[:, 2].view(-1, 1), coords[:, 2])
-        y2 = torch.min(coords[:, 3].view(-1, 1), coords[:, 3])
-        inter_area = ((x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0))
-        area = (coords[:, 2] - coords[:, 0]) * (coords[:, 3] - coords[:, 1])
-        ioa_mat = inter_area / (torch.min(area.view(-1,1), area.view(1,-1)) + 1e-6)
-        conn = (iou_mat > iou_thr) | (ioa_mat > ioa_thr)
-        visited = torch.zeros(N, dtype=torch.bool, device=data.device)
-        groups = []
-        for i in range(N):
-            if visited[i]:
-                continue
-            stack, comp = [i], []
-            while stack:
-                u = stack.pop()
-                if visited[u]:
-                    continue
-                visited[u] = True
-                comp.append(u)
-                stack.extend(torch.where(conn[u])[0].tolist())
-            groups.append(comp)
-        fused = []
-        for comp in groups:
-            idx = torch.tensor(comp, device=data.device)
-            x1_min, y1_min = coords[idx, :2].min(0)[0]
-            x2_max, y2_max = coords[idx, 2:4].max(0)[0]
-            scs = scores[idx]
-            best = scs.argmax()
-            fused.append(torch.tensor([
-                x1_min, y1_min, x2_max, y2_max,
-                scs[best], labels[idx][best].float()
-            ], device=data.device))
-        fused_data = torch.stack(fused, 0)
-        out = res.new()
-        out.update(boxes=fused_data)
-        return out
-
     def detect_frame(self, frame, frame_id, conf_thresh=0.01):
         yolo_res = self.yolo12.predict(frame, agnostic_nms=True, iou=0.5, verbose=False)[0]
         detr_res = self.detr.predict(frame, agnostic_nms=True, iou=0.5, verbose=False)[0]
-        merged = self.merge_frame_results([yolo_res, detr_res], iou_thresh=0.5)
-        fused = self.fuse_union(merged, iou_thr=0.5, ioa_thr=0.7)
+        merged = merge_frame_results([yolo_res, detr_res], iou_thresh=0.5)
+        fused = fuse_union(merged, iou_thr=0.5, ioa_thr=0.7)
         dets, det_id = [], 0
         for box in fused.boxes.data:
             x1, y1, x2, y2, conf, cls = box.tolist()
@@ -194,8 +195,8 @@ def run_ucmc_on_video(video_path, cam_para_path, output_path):
 
 if __name__ == "__main__":
     run_ucmc_on_video(
-        video_path="demo/demo.mp4",
+        video_path="/mnt/c/Users/felix/Downloads/seg0.mp4",
         cam_para_path="demo/cam_para.txt",
-        output_path="demo/output_ucmc.mp4"
+        output_path="/mnt/c/Users/felix/Downloads/seg0_ucmc.mp4"
     )
 
