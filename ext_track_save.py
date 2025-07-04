@@ -189,13 +189,47 @@ class LiveDetector:
         return dets
 
 
+def load_models(yolo_models=None, detr_models=None):
+    """
+    Load YOLO and DETR models based on provided model names.
+    
+    Args:
+        yolo_models: List of YOLO model names/paths
+        detr_models: List of DETR model names/paths
+    
+    Returns:
+        List of loaded model instances
+    """
+    models = []
+    
+    # Load YOLO models
+    if yolo_models:
+        for model_name in yolo_models:
+            print(f"Loading YOLO model: {model_name}")
+            models.append(YOLO(model_name))
+    
+    # Load DETR models
+    if detr_models:
+        for model_name in detr_models:
+            print(f"Loading DETR model: {model_name}")
+            models.append(RTDETR(model_name))
+    
+    # If no models specified, use defaults
+    if not models:
+        print("No models specified, using defaults: yolo12x.pt and rtdetr-x.pt")
+        models = [YOLO("yolo12x.pt"), RTDETR("rtdetr-x.pt")]
+    
+    return models
+
+
 class UCMCTracker:
     def __init__(self, cam_para_path, wx=5.0, wy=5.0, vmax=10.0, a=100.0, cdt=60.0, 
-                 fps=30.0, high_score=0.5, conf_thresh=0.01, save_crops=False, crops_dir=None):
-        # self.detector = LiveDetector(cam_para_path)
-        self.detector = LiveDetector(cam_para_path, [YOLO("yolo12x.pt"), RTDETR("rtdetr-x.pt")])
-        # self.detector = LiveDetector(cam_para_path, [RTDETR("rtdetr-x.pt")])
-        # self.detector = LiveDetector(cam_para_path, [YOLO("/home/felix/models/detr_visdrone5/weights/best.pt")])
+                 fps=30.0, high_score=0.5, conf_thresh=0.01, save_crops=False, crops_dir=None,
+                 yolo_models=None, detr_models=None):
+        # Load models based on arguments
+        models = load_models(yolo_models, detr_models)
+        self.detector = LiveDetector(cam_para_path, models)
+        
         self.tracker = UCMCTrack(a, a, wx, wy, vmax, cdt, fps, "MOT", high_score, False, None)
         self.conf_thresh = conf_thresh
         self.frame_id = 1
@@ -259,7 +293,7 @@ class UCMCTracker:
     
 
 def run_ucmc_on_video(video_path, cam_para_path, output_path=None, save_dir=None, 
-                      create_video=True, copy_original=True):
+                      create_video=True, copy_original=True, yolo_models=None, detr_models=None):
     """
     Run UCMC tracker on video.
     
@@ -270,6 +304,8 @@ def run_ucmc_on_video(video_path, cam_para_path, output_path=None, save_dir=None
         save_dir: Directory to save crops and tracking CSV (optional)
         create_video: Whether to create output video (default True)
         copy_original: Whether to copy original video to output dir (default True)
+        yolo_models: List of YOLO model names/paths
+        detr_models: List of DETR model names/paths
     """
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -321,7 +357,9 @@ def run_ucmc_on_video(video_path, cam_para_path, output_path=None, save_dir=None
         high_score=0.5,
         conf_thresh=0.01,
         save_crops=save_crops,
-        crops_dir=crops_dir
+        crops_dir=crops_dir,
+        yolo_models=yolo_models,
+        detr_models=detr_models
     )
 
     frame_id = 0
@@ -369,7 +407,11 @@ def run_ucmc_on_video(video_path, cam_para_path, output_path=None, save_dir=None
             "height": height,
             "total_tracks": len(set(t['track_id'] for t in tracker.tracking_results)),
             "total_detections": len(tracker.tracking_results),
-            "processing_date": datetime.now().isoformat()
+            "processing_date": datetime.now().isoformat(),
+            "models": {
+                "yolo": yolo_models or ["yolo12x.pt"],
+                "detr": detr_models or ["rtdetr-x.pt"]
+            }
         }
         metadata_path = os.path.join(track_data_dir, "metadata.json")
         with open(metadata_path, 'w') as f:
@@ -389,7 +431,8 @@ def run_ucmc_on_video(video_path, cam_para_path, output_path=None, save_dir=None
 
 def process_video_folder(input_dir, output_dir, cam_para_path, 
                         video_extensions=('.mp4', '.avi', '.mov', '.mkv', '.ts'),
-                        create_videos=False, copy_originals=True, skip_existing=True):
+                        create_videos=False, copy_originals=True, skip_existing=True,
+                        yolo_models=None, detr_models=None):
     """
     Process all videos in a folder with UCMC tracking.
     
@@ -401,6 +444,8 @@ def process_video_folder(input_dir, output_dir, cam_para_path,
         create_videos: Whether to create output videos with tracking visualization
         copy_originals: Whether to copy original videos to output directories
         skip_existing: Whether to skip videos that have already been processed
+        yolo_models: List of YOLO model names/paths
+        detr_models: List of DETR model names/paths
     
     Returns:
         Dictionary with processing results
@@ -455,7 +500,9 @@ def process_video_folder(input_dir, output_dir, cam_para_path,
                 output_path=output_video_path,
                 save_dir=str(video_output_dir),
                 create_video=create_videos,
-                copy_original=copy_originals
+                copy_original=copy_originals,
+                yolo_models=yolo_models,
+                detr_models=detr_models
             )
             
             if success:
@@ -491,6 +538,10 @@ def process_video_folder(input_dir, output_dir, cam_para_path,
         "skipped": skipped,
         "failed": failed,
         "processing_date": datetime.now().isoformat(),
+        "models": {
+            "yolo": yolo_models or ["yolo12x.pt"],
+            "detr": detr_models or ["rtdetr-x.pt"]
+        },
         "results": results
     }
     
@@ -524,6 +575,12 @@ def main():
     parser.add_argument('--no-copy-original', action='store_true',
                         help='Do not copy original videos to output directories')
     
+    # Model selection arguments
+    parser.add_argument('--yolo-models', nargs='+', type=str,
+                        help='YOLO model names/paths (e.g., yolo12x.pt yolo11x.pt)')
+    parser.add_argument('--detr-models', nargs='+', type=str,
+                        help='DETR model names/paths (e.g., rtdetr-x.pt rtdetr-l.pt)')
+    
     # Single video mode arguments
     parser.add_argument('--video', type=str,
                         help='Path to input video (for single mode)')
@@ -555,7 +612,9 @@ def main():
             output_path=args.output,
             save_dir=args.save_dir,
             create_video=args.create_videos or args.output is not None,
-            copy_original=not args.no_copy_original
+            copy_original=not args.no_copy_original,
+            yolo_models=args.yolo_models,
+            detr_models=args.detr_models
         )
     
     elif args.mode == 'batch':
@@ -569,7 +628,9 @@ def main():
             video_extensions=tuple(args.extensions),
             create_videos=args.create_videos,
             copy_originals=not args.no_copy_original,
-            skip_existing=not args.no_skip_existing
+            skip_existing=not args.no_skip_existing,
+            yolo_models=args.yolo_models,
+            detr_models=args.detr_models
         )
 
 
@@ -578,32 +639,49 @@ if __name__ == "__main__":
     
     # 1. Command line interface
     # main()
+
+    # 2. Direct batch processing with custom models
+    process_video_folder(
+        input_dir="/mnt/c/Users/felix/Downloads/MCCD",
+        output_dir="/mnt/c/Users/felix/Downloads/MCCD_res",
+        cam_para_path="demo/cam_para.txt",
+        create_videos=True,
+        copy_originals=False,
+        skip_existing=True,
+        # yolo_models=["/home/felix/models/yolo12_visdrone11/weights/best.pt"],  # Multiple YOLO models
+        # detr_models=["/home/felix/models/detr_visdrone5/weights/best.pt"]  # Single DETR model
+    )
     
-    # 2. Direct batch processing
+    # 2. Direct batch processing with custom models
     # process_video_folder(
-    #     input_dir="/mnt/c/Users/felix/Downloads/mclarens_video",
-    #     output_dir="/mnt/c/Users/felix/Downloads/mclarens_res_full",
+    #     input_dir="/mnt/c/Users/felix/Downloads/netanya",
+    #     output_dir="/mnt/c/Users/felix/Downloads/netanya_res_custom_models",
     #     cam_para_path="demo/cam_para.txt",
-    #     create_videos=True,  # Set to True if you want tracked videos
-    #     copy_originals=False,  # Copy original videos to output dirs
-    #     skip_existing=True    # Skip already processed videos
+    #     create_videos=True,
+    #     copy_originals=False,
+    #     skip_existing=True,
+    #     yolo_models=["/home/felix/models/yolo12_visdrone11/weights/best.pt"],  # Multiple YOLO models
+    #     detr_models=["/home/felix/models/detr_visdrone5/weights/best.pt"]  # Single DETR model
     # )
 
-    process_video_folder(
-        input_dir="/mnt/c/Users/felix/Downloads/trucks",
-        output_dir="/mnt/c/Users/felix/Downloads/trucks_res",
-        cam_para_path="demo/cam_para.txt",
-        create_videos=True,  # Set to True if you want tracked videos
-        copy_originals=False,  # Copy original videos to output dirs
-        skip_existing=True    # Skip already processed videos
-    )
-
+    # 3. Example with custom fine-tuned model
+    # process_video_folder(
+    #     input_dir="/mnt/c/Users/felix/Downloads/netanya",
+    #     output_dir="/mnt/c/Users/felix/Downloads/netanya_res",
+    #     cam_para_path="demo/cam_para.txt",
+    #     create_videos=True,
+    #     copy_originals=False,
+    #     skip_existing=True,
+    #     yolo_models=["/home/felix/models/detr_visdrone5/weights/best.pt"],
+    #     detr_models=None  # No DETR models
+    # )
     
-    
-    # 3. Single video processing (original functionality)
+    # 4. Single video processing with custom models
     # run_ucmc_on_video(
     #     video_path="/mnt/c/Users/felix/Downloads/seg0.mp4",
     #     cam_para_path="demo/cam_para.txt",
     #     save_dir="/mnt/c/Users/felix/Downloads/seg0_td",
-    #     create_video=False
+    #     create_video=False,
+    #     yolo_models=["yolo12x.pt"],
+    #     detr_models=["rtdetr-x.pt", "rtdetr-l.pt"]  # Multiple DETR models
     # )
