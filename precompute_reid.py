@@ -13,7 +13,6 @@ import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-import multiprocessing
 from torchreid.reid.utils import FeatureExtractor
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

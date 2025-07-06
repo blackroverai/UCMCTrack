@@ -75,7 +75,7 @@ def readCamParaFile(camera_para):
                 i += 1
     except FileNotFoundError:
         print(f"Error! {camera_para} doesn't exist.")
-        return None,False
+        return None, False
 
     Ki = np.zeros((3, 4))
     Ki[:, :3] = IntrinsicMatrix
@@ -89,13 +89,13 @@ def readCamParaFile(camera_para):
     return Ki,Ko,True
 
 class Mapper(object):
-    def __init__(self, campara_file,dataset= "kitti"):
+    def __init__(self, cam_para_file, dataset= "kitti"):
         self.A = np.zeros((3, 3))
         if dataset == "kitti":
-            self.KiKo, self.is_ok = readKittiCalib(campara_file)
+            self.KiKo, self.is_ok = readKittiCalib(cam_para_file)
             z0 = -1.73
         else:
-            self.Ki,self.Ko, self.is_ok = readCamParaFile(campara_file)
+            self.Ki,self.Ko, self.is_ok = readCamParaFile(cam_para_file)
             self.KiKo = np.dot(self.Ki, self.Ko)
             z0 = 0
 
