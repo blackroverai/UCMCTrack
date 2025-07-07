@@ -4,8 +4,6 @@ from __future__ import print_function
 import numpy as np
 from lap import lapjv
 
-import uuid
-
 from .kalman import KalmanTracker,TrackStatus
 
 
@@ -108,7 +106,6 @@ class UCMCTrack(object):
                 self.trackers[trk_idx].detidx = det_idx
                 self.trackers[trk_idx].status = TrackStatus.Confirmed
                 dets[det_idx].track_id = self.trackers[trk_idx].id
-                dets[det_idx].uuid = self.trackers[trk_idx].uuid
 
         else:
             self.detidx_remain = detidx_high
@@ -143,7 +140,6 @@ class UCMCTrack(object):
                 self.trackers[trk_idx].detidx = det_idx
                 self.trackers[trk_idx].status = TrackStatus.Confirmed
                 dets[det_idx].track_id = self.trackers[trk_idx].id
-                dets[det_idx].uuid = self.trackers[trk_idx].uuid
 
     def associate_tentative(self, dets):
         num_det = len(self.detidx_remain)
@@ -166,10 +162,10 @@ class UCMCTrack(object):
             self.trackers[trk_idx].birth_count += 1
             self.trackers[trk_idx].detidx = det_idx
             dets[det_idx].track_id = self.trackers[trk_idx].id
-            dets[det_idx].uuid = self.trackers[trk_idx].uuid
             if self.trackers[trk_idx].birth_count >= 2:
                 self.trackers[trk_idx].birth_count = 0
                 self.trackers[trk_idx].status = TrackStatus.Confirmed
+                dets[det_idx].is_new = True  # Mark as new when confirmed
 
         for i in unmatched_b:
             trk_idx = self.tentative_idx[i]
@@ -188,9 +184,6 @@ class UCMCTrack(object):
     def initial_tentative(self,dets):
         for i in self.detidx_remain: 
             self.trackers.append(KalmanTracker(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width,dets[i].bb_height,self.dt))
-            new_id = str(uuid.uuid4())
-            print(f"Creating new tracker with ID: {new_id}")  # Debug print
-            self.trackers[-1].uuid = new_id
             self.trackers[-1].status = TrackStatus.Tentative
             self.trackers[-1].detidx = i
         self.detidx_remain = []
