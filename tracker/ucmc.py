@@ -165,7 +165,7 @@ class UCMCTrack(object):
             if self.trackers[trk_idx].birth_count >= 2:
                 self.trackers[trk_idx].birth_count = 0
                 self.trackers[trk_idx].status = TrackStatus.Confirmed
-                dets[det_idx].is_new = True  # Mark as new when confirmed
+                # dets[det_idx].is_new = True  # Mark as new when confirmed
 
         for i in unmatched_b:
             trk_idx = self.tentative_idx[i]
