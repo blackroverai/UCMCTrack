@@ -157,20 +157,25 @@ class LiveDetector:
     def detect_frame(self, frame, frame_id, conf_thresh=0.01):
         preds = self._model_preds(frame)
 
-        if self._single_model:
-        # nothing to merge, but still fuse overlapping boxes
-            fused = fuse_union(
-                preds[0], 
-                iou_thr=self.fuse_iou,
-                ioa_thr=self.fuse_ioa
-            )
+        NO_FUSION = True
+
+        if NO_FUSION:
+            fused = preds[0]
         else:
-            merged = merge_frame_results(preds, iou_thresh=self.merge_iou)
-            fused  = fuse_union(
-                merged,
-                iou_thr=self.fuse_iou,
-                ioa_thr=self.fuse_ioa
-            )
+            if self._single_model:
+            # nothing to merge, but still fuse overlapping boxes
+                fused = fuse_union(
+                    preds[0], 
+                    iou_thr=self.fuse_iou,
+                    ioa_thr=self.fuse_ioa
+                )
+            else:
+                merged = merge_frame_results(preds, iou_thresh=self.merge_iou)
+                fused  = fuse_union(
+                    merged,
+                    iou_thr=self.fuse_iou,
+                    ioa_thr=self.fuse_ioa
+                )
 
         dets, det_id = [], 0
 
@@ -218,6 +223,8 @@ def load_models(yolo_models=None, detr_models=None):
     if not models:
         print("No models specified, using defaults: yolo12x.pt and rtdetr-x.pt")
         models = [YOLO("yolo12x.pt"), RTDETR("rtdetr-x.pt")]
+
+    print(len(models))
     
     return models
 
@@ -230,7 +237,9 @@ class UCMCTracker:
         models = load_models(yolo_models, detr_models)
         self.detector = LiveDetector(cam_para_path, models)
         
-        self.tracker = UCMCTrack(a, a, wx, wy, vmax, cdt, fps, "MOT", high_score, False, None)
+        same_class_only = True 
+
+        self.tracker = UCMCTrack(a, a, wx, wy, vmax, cdt, fps, "MOT", high_score, False, None, same_class_only)
         self.conf_thresh = conf_thresh
         self.frame_id = 1
         
@@ -380,7 +389,9 @@ def run_ucmc_on_video(video_path, cam_para_path, output_path=None, save_dir=None
                 x2 = int(det.bb_left + det.bb_width)
                 y2 = int(det.bb_top + det.bb_height)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, str(det.track_id), (x1, y1 - 5),
+                # cv2.putText(frame, str(det.track_id), (x1, y1 - 5),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+                cv2.putText(frame, str(det.track_id), (x1, y2 + 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
             writer.write(frame)
 
@@ -640,16 +651,28 @@ if __name__ == "__main__":
     # 1. Command line interface
     # main()
 
-    # 2. Direct batch processing with custom models
+    # # 2. Direct batch processing with custom models
+    # process_video_folder(
+    #     input_dir="/mnt/c/Users/felix/Downloads/MCCD",
+    #     output_dir="/mnt/c/Users/felix/Downloads/MCCD_res",
+    #     cam_para_path="demo/cam_para.txt",
+    #     create_videos=True,
+    #     copy_originals=False,
+    #     skip_existing=True,
+    #     # yolo_models=["/home/felix/models/yolo12_visdrone11/weights/best.pt"],  # Multiple YOLO models
+    #     # detr_models=["/home/felix/models/detr_visdrone5/weights/best.pt"]  # Single DETR model
+    # )
+
+        # 2. Direct batch processing with custom models
     process_video_folder(
-        input_dir="/mnt/c/Users/felix/Downloads/MCCD",
-        output_dir="/mnt/c/Users/felix/Downloads/MCCD_res",
+        input_dir="/mnt/c/Users/felix/Downloads/rob",
+        output_dir="/mnt/c/Users/felix/Downloads/rob_nofuse_sameclass",
         cam_para_path="demo/cam_para.txt",
         create_videos=True,
         copy_originals=False,
-        skip_existing=True,
-        # yolo_models=["/home/felix/models/yolo12_visdrone11/weights/best.pt"],  # Multiple YOLO models
-        # detr_models=["/home/felix/models/detr_visdrone5/weights/best.pt"]  # Single DETR model
+        skip_existing=False,
+        yolo_models=['yolo11x-seg.pt'],  # Multiple YOLO models
+        detr_models=[]  # Single DETR model
     )
     
     # 2. Direct batch processing with custom models

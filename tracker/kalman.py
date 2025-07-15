@@ -11,7 +11,7 @@ class KalmanTracker(object):
 
     count = 1
 
-    def __init__(self, y, R, wx, wy, vmax, w,h,dt=1/30):
+    def __init__(self, y, R, wx, wy, vmax, w, h, det_class, dt=1/30):
         
         self.kf = KalmanFilter(dim_x=4, dim_z=2)
         self.kf.F = np.array([[1, dt, 0, 0], [0, 1, 0, 0], [0, 0, 1, dt], [0, 0, 0, 1]])
@@ -41,6 +41,7 @@ class KalmanTracker(object):
         self.detidx = -1
         self.w = w
         self.h = h
+        self.det_class = det_class  # Store the class label
 
         self.status = TrackStatus.Tentative
 

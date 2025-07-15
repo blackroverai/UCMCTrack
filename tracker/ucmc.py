@@ -1,4 +1,3 @@
-
 from __future__ import print_function
 
 import numpy as np
@@ -21,7 +20,7 @@ def linear_assignment(cost_matrix, thresh):
     return matches, unmatched_a, unmatched_b
 
 class UCMCTrack(object):
-    def __init__(self,a1,a2,wx, wy,vmax, max_age, fps, dataset, high_score, use_cmc,detector = None):
+    def __init__(self,a1,a2,wx, wy,vmax, max_age, fps, dataset, high_score, use_cmc,detector = None, same_class_only=True):
         self.wx = wx
         self.wy = wy
         self.vmax = vmax
@@ -33,6 +32,7 @@ class UCMCTrack(object):
         self.dt = 1.0/fps
 
         self.use_cmc = use_cmc
+        self.same_class_only = same_class_only  # Only match detections/tracks with same class
 
         self.trackers = []
         self.confirmed_idx = []
@@ -89,7 +89,11 @@ class UCMCTrack(object):
                 det_idx = detidx_high[i]
                 for j in range(num_trk):
                     trk_idx = trackidx[j]
-                    cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
+                    # Check if classes match, if not set infinite cost
+                    if self.same_class_only and dets[det_idx].det_class != self.trackers[trk_idx].det_class:
+                        cost_matrix[i,j] = np.inf
+                    else:
+                        cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
                 
             matched_indices,unmatched_a,unmatched_b = linear_assignment(cost_matrix, self.a1)
             
@@ -121,7 +125,11 @@ class UCMCTrack(object):
                 det_idx = detidx_low[i]
                 for j in range(num_trk):
                     trk_idx = trackidx_remain[j]
-                    cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
+                    # Check if classes match, if not set infinite cost
+                    if self.same_class_only and dets[det_idx].det_class != self.trackers[trk_idx].det_class:
+                        cost_matrix[i,j] = np.inf
+                    else:
+                        cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
                 
             matched_indices,unmatched_a,unmatched_b = linear_assignment(cost_matrix,self.a2)
             
@@ -150,7 +158,11 @@ class UCMCTrack(object):
             det_idx = self.detidx_remain[i]
             for j in range(num_trk):
                 trk_idx = self.tentative_idx[j]
-                cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
+                # Check if classes match, if not set infinite cost
+                if self.same_class_only and dets[det_idx].det_class != self.trackers[trk_idx].det_class:
+                    cost_matrix[i,j] = np.inf
+                else:
+                    cost_matrix[i,j] = self.trackers[trk_idx].distance(dets[det_idx].y, dets[det_idx].R)
             
         matched_indices,unmatched_a,unmatched_b = linear_assignment(cost_matrix,self.a1)
 
@@ -183,7 +195,7 @@ class UCMCTrack(object):
     
     def initial_tentative(self,dets):
         for i in self.detidx_remain: 
-            self.trackers.append(KalmanTracker(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width,dets[i].bb_height,self.dt))
+            self.trackers.append(KalmanTracker(dets[i].y,dets[i].R,self.wx,self.wy,self.vmax, dets[i].bb_width,dets[i].bb_height,dets[i].det_class,self.dt))
             self.trackers[-1].status = TrackStatus.Tentative
             self.trackers[-1].detidx = i
         self.detidx_remain = []
@@ -214,5 +226,3 @@ class UCMCTrack(object):
                 self.coasted_idx.append(i)
             elif self.trackers[i].status == TrackStatus.Tentative:
                 self.tentative_idx.append(i)
-
-        
