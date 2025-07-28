@@ -20,7 +20,7 @@ def linear_assignment(cost_matrix, thresh):
     return matches, unmatched_a, unmatched_b
 
 class UCMCTrack(object):
-    def __init__(self, a1, a2, wx, wy, vmax, max_age, fps, dataset, high_score, use_cmc, detector = None, same_class_only=True):
+    def __init__(self, a1, a2, wx, wy, vmax, max_age, fps, dataset, high_score, use_cmc, detector=None, same_class_only=True):
         self.wx = wx
         self.wy = wy
         self.vmax = vmax
