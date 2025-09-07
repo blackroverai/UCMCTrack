@@ -64,7 +64,7 @@ class UCMCTrack(object):
             else:
                 detidx_low.append(i)
 
-        # Predcit new locations of tracks
+        # Predict new locations of tracks
         for track in self.trackers:
             track.predict()
             if self.use_cmc:
@@ -209,7 +209,7 @@ class UCMCTrack(object):
             if ( trk.status == TrackStatus.Coasted and trk.death_count >= self.max_age) or ( trk.status == TrackStatus.Tentative and trk.death_count >= 2):
                   self.trackers.pop(i)
 
-    def update_status(self,dets):
+    def update_status(self, dets):
         self.confirmed_idx = []
         self.coasted_idx = []
         self.tentative_idx = []
@@ -226,3 +226,30 @@ class UCMCTrack(object):
                 self.coasted_idx.append(i)
             elif self.trackers[i].status == TrackStatus.Tentative:
                 self.tentative_idx.append(i)
+
+    def get_active_tracks(self):
+        """
+        Returns a list of all currently active tracks with their IDs, status, and death_count.
+        
+        Returns:        
+            List of dictionaries containing track information:
+            - track_id: The unique ID of the track
+            - status: TrackStatus (Tentative, Confirmed, or Coasted)
+            - death_count: Number of frames since last detection association
+            - age: Total age of the track (frames since creation)
+            - class: Detection class of the track
+        """
+        active_tracks = []
+        
+        for tracker in self.trackers:
+            track_info = {
+                'track_id': tracker.id,
+                'status': tracker.status.name,  # Convert enum to string
+                'death_count': tracker.death_count,
+                'age': tracker.age,
+                'class': tracker.det_class,
+                'birth_count': tracker.birth_count  # Relevant for Tentative tracks
+            }
+            active_tracks.append(track_info)
+        
+        return active_tracks
